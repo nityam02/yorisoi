@@ -114,3 +114,8 @@ def test_missing_data_raises_priority():
     known = priority({"household": "with_family", "mobility": "independent", "medical_device": False}, brief)
     unknown = priority({"household": None, "mobility": None, "medical_device": None}, brief)
     assert unknown["score"] > known["score"]
+
+
+def test_consent_limited_to_named_people_warns():
+    p = _plan(consent={"share_with_supporters": "yes", "quote": "学校と鈴木さんには見せていいです。ほかの人は、ちょっと心配です。"})
+    assert "R-consent-limited" in _ids(critic.rule_flags(p, BRIEF, None))

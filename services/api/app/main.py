@@ -14,6 +14,7 @@ from .agents import critic, extractor, planner, rewriter, transcriber
 from .config import settings
 from .hazard import hazard_brief, priority
 from .models import OutputsRequest, PlanEdit, StatusChange, TranscriptIn
+from .tools.routes import walking_route
 
 app = FastAPI(title="Yorisoi API", version="0.1.0")
 
@@ -121,7 +122,7 @@ def review(rid: str):
     rules = critic.rule_flags(b["plan"], brief, b["extraction"], b.get("rejected"), b.get("dropped_citations"))
     ai = _llm_guard(critic.ai_review, b["plan"], b["evidence"], rules)
     b["flags"] = rules + ai
-    b["models"]["review"] = settings.model_critic
+    b["models"]["review"] = llm.last_model()
     _audit(b, "yorisoi", "ai_review", f"{len(ai)} AI notes")
     store.plans.put(rid, b)
     return b
@@ -133,9 +134,19 @@ def edit_plan(rid: str, body: PlanEdit):
     b = _bundle_or_404(rid)
     if b["status"] == "approved":
         raise HTTPException(409, "Approved plans are locked; set status back to draft to edit")
+    brief = hazard_brief(r["lat"], r["lon"])
+    new_shelter = (body.plan.get("shelter") or {}).get("id")
+    if new_shelter and new_shelter != (b["plan"].get("shelter") or {}).get("id"):
+        # Shelter facts and the route always come from the tools, never from the client.
+        s = next((x for x in brief["shelters"] if x["id"] == new_shelter), None)
+        if not s:
+            raise HTTPException(400, f"Unknown shelter {new_shelter}")
+        body.plan["shelter"] = {**body.plan["shelter"], **{k: s[k] for k in ("id", "name", "address", "lat", "lon",
+                                "certified_for_flood", "flood_at_site", "distance_m")}, "overridden_by_code": False}
+        body.plan["route"] = brief["route_to_suggested"] if new_shelter == brief["suggested_shelter_id"] \
+            else walking_route((r["lat"], r["lon"]), (s["lat"], s["lon"]))
     b["plan"] = body.plan
     b["updated_at"] = store.now()
-    brief = hazard_brief(r["lat"], r["lon"])
     ai = [f for f in b.get("flags", []) if f["source"] == "ai_review"]
     b["flags"] = critic.rule_flags(b["plan"], brief, b["extraction"], b.get("rejected"), b.get("dropped_citations")) + ai
     b["outputs"] = {}  # outputs must be regenerated from the edited plan
@@ -169,9 +180,16 @@ def outputs(rid: str, body: OutputsRequest):
     lang = body.language or (r["language"] if r["language"] != "ja" else "en")
     jobs = {"easy_read": (rewriter.easy_read, b["plan"]), "supporter_card": (rewriter.supporter_card, b["plan"]),
             "translation": (rewriter.translate, b["plan"], lang)}
+    results, failed = {}, []
     with ThreadPoolExecutor(max_workers=3) as pool:  # the three rewrites are independent
-        futures = {k: pool.submit(_llm_guard, *jobs[k]) for k in body.kinds}
-        results = {k: f.result() for k, f in futures.items()}
+        futures = {k: pool.submit(jobs[k][0], *jobs[k][1:]) for k in body.kinds}
+        for k, f in futures.items():
+            try:
+                results[k] = f.result()
+            except llm.LLMUnavailable:
+                failed.append(k)
+    for k in failed:  # parallel calls can hit rate limits; retry one at a time
+        results[k] = _llm_guard(*jobs[k])
     for k, v in results.items():
         out[k] = {"language": lang, "text": v} if k == "translation" else v
     _audit(b, "yorisoi", "outputs_generated", ",".join(body.kinds))

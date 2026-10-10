@@ -14,3 +14,5 @@ dist/
 services/api/.cache/
 services/api/var/
 .DS_Store
+tools/demo/node_modules/
+tools/demo/out/

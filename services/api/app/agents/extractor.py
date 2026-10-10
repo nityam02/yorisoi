@@ -63,4 +63,4 @@ def extract(transcript: str) -> dict:
         rejected.append(dict(consent))
         consent.update(plan_creation="unclear", share_with_supporters="unclear", quote="")
     kept["consent"] = consent
-    return {"extraction": kept, "rejected": rejected, "model": settings.model_fast}
+    return {"extraction": kept, "rejected": rejected, "model": llm.last_model()}

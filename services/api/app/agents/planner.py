@@ -116,5 +116,5 @@ def draft(resident: dict, extraction: dict, brief: dict) -> dict:
         "items_to_take": [_clean(x, valid, dropped) for x in o["items_to_take"]],
         "consent": extraction["consent"],
     }
-    return {"plan": plan, "evidence": cat, "dropped_citations": sorted(set(dropped)), "model": settings.model_fast,
+    return {"plan": plan, "evidence": cat, "dropped_citations": sorted(set(dropped)), "model": llm.last_model(),
             "planner_raw": json.loads(out.model_dump_json())}

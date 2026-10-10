@@ -22,6 +22,9 @@ class Settings:
     model_fast: str = os.getenv("YORISOI_MODEL_FAST", "gemini-3.5-flash")
     model_critic: str = os.getenv("YORISOI_MODEL_CRITIC", "gemini-3.1-pro-preview")
     model_live: str = os.getenv("YORISOI_MODEL_LIVE", "gemini-3.8-live")
+    # Tried in order when a model is overloaded (503) or out of quota (429).
+    fast_fallbacks: tuple = tuple(os.getenv("YORISOI_FAST_FALLBACKS", "gemini-3.1-flash-lite,gemini-2.5-flash").split(","))
+    critic_fallbacks: tuple = tuple(os.getenv("YORISOI_CRITIC_FALLBACKS", "gemini-2.5-pro,gemini-3.5-flash,gemini-2.5-flash").split(","))
 
     store_dir: Path = Path(os.getenv("YORISOI_STORE_DIR", Path(__file__).resolve().parents[1] / "var"))
     cache_dir: Path = Path(os.getenv("YORISOI_CACHE_DIR", Path(__file__).resolve().parents[1] / ".cache"))

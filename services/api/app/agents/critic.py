@@ -96,6 +96,9 @@ def rule_flags(plan: dict, brief: dict, extraction: dict | None, rejected: list 
     if consent.get("share_with_supporters") != "yes":
         add("R-consent", "critical", "consent",
             "No clear consent to share this plan with supporters. It cannot be shared until consent is recorded.")
+    elif any(w in consent.get("quote", "") for w in ("だけ", "以外", "ほかの人", "他の人", "には見せて", "には伝えて")):
+        add("R-consent-limited", "warning", "consent",
+            f"Consent looks limited to specific people (\"{consent['quote'][:60]}\"). Record who may see the plan and share it with no one else.")
 
     for section in ("special_notes", "support_notes", "items_to_take"):
         for i, item in enumerate(plan.get(section, []), start=1):
@@ -128,10 +131,7 @@ Severity must be "warning" or "info". Return an empty list if there is nothing n
 def ai_review(plan: dict, evidence: dict, existing: list[dict]) -> list[dict]:
     prompt = json.dumps({"plan": plan, "evidence": evidence, "existing_flags": [f["message"] for f in existing]},
                         ensure_ascii=False)
-    try:
-        out = llm.structured(settings.model_critic, REVIEW_SYSTEM, prompt, _Review)
-    except llm.LLMUnavailable:
-        out = llm.structured(settings.model_fast, REVIEW_SYSTEM, prompt, _Review)
+    out = llm.structured(settings.model_critic, REVIEW_SYSTEM, prompt, _Review)  # falls back to other models if busy
     flags = []
     for i, it in enumerate(out.items[:8], start=1):
         sev = it.severity if it.severity in ("warning", "info") else "warning"
