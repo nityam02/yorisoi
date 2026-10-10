@@ -18,7 +18,7 @@ for seg in cfg["segments"]:
         try:
           r = llm.client().models.generate_content(
             model=os.getenv("TTS_MODEL", "gemini-3.8-flash-tts"),
-            contents=f"{cfg['style']} {seg['text']}",
+            contents=seg["text"],
             config=types.GenerateContentConfig(
                 response_modalities=["AUDIO"],
                 speech_config=types.SpeechConfig(voice_config=types.VoiceConfig(
