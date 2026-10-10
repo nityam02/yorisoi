@@ -6,7 +6,9 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
+_HERE = Path(__file__).resolve()
+# Repo root in local dev; in the container the tree is shallower, so fall back to /.
+REPO_ROOT = _HERE.parents[3] if len(_HERE.parents) > 3 else _HERE.parents[-1]
 load_dotenv(REPO_ROOT / ".env")
 
 

@@ -119,3 +119,10 @@ def test_missing_data_raises_priority():
 def test_consent_limited_to_named_people_warns():
     p = _plan(consent={"share_with_supporters": "yes", "quote": "学校と鈴木さんには見せていいです。ほかの人は、ちょっと心配です。"})
     assert "R-consent-limited" in _ids(critic.rule_flags(p, BRIEF, None))
+
+
+def test_multi_speaker_quote_needs_every_sentence_verbatim():
+    t = extractor._norm("本人: 計画を作るのはかまわん。\n家族: 近所の人に知らせるのも、うちは構いません。\n本人: ああ、それでええ。")
+    assert extractor._supported("計画を作るのはかまわん。近所の人に知らせるのも、うちは構いません。", t)
+    assert extractor._supported("家族: 近所の人に知らせるのも、うちは構いません。\n本人: ああ、それでええ。", t)
+    assert not extractor._supported("計画を作るのはかまわん。誰にでも見せていい。", t)

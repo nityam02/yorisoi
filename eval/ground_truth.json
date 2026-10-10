@@ -1,0 +1,25 @@
+{
+  "_notice": "Hand-written answers for the three fictional sample interviews in services/api/app/data/interviews.",
+  "R001": {
+    "supporters": [{"name": "中村", "phone": "090-0000-2222"}, {"name": "岡本", "phone": null}],
+    "emergency_contacts": [{"name": "山口", "phone": "090-0000-1111"}],
+    "considerations": ["medical_device"],
+    "consent_share": "yes",
+    "facts": ["酸素", "一階", "杖", "ミケ", "血圧", "眼鏡", "ガラケー"]
+  },
+  "R002": {
+    "supporters": [{"name": "森", "phone": "086-000-3333"}],
+    "emergency_contacts": [{"name": "浩二", "phone": "090-0000-4444"}],
+    "considerations": ["cannot_stand_or_walk"],
+    "consent_share": "yes",
+    "facts": ["車いす", "階段", "福祉タクシー", "さらさら", "トイレ", "おむつ"]
+  },
+  "R003": {
+    "supporters": [{"name": "鈴木", "phone": "090-0000-6666"}],
+    "emergency_contacts": [{"name": "ナム", "phone": "080-0000-5555"}],
+    "considerations": ["judgement"],
+    "consent_share": "yes",
+    "consent_limited": true,
+    "facts": ["パニック", "てんかん", "水", "特別支援学校", "自転車", "ベトナム語", "ヘッドホン"]
+  }
+}

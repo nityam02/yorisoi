@@ -21,6 +21,9 @@ SYSTEM = """あなたは日本の市町村で個別避難計画づくりを支�
 _PUNCT = re.compile(r"[\s、。，．,.!！?？「」『』（）()・…ー〜~\-—–‐‑−:：;；\"'“”‘’]")
 
 
+_SPEAKER = re.compile(r"^\s*(ケアマネ|本人|家族|相談員|母|父|職員)\s*[:：]")
+
+
 def _norm(s: str) -> str:
     return _PUNCT.sub("", unicodedata.normalize("NFKC", s))
 
@@ -31,9 +34,10 @@ def _supported(quote: str, transcript_norm: str) -> bool:
         return False
     if q in transcript_norm:
         return True
-    # Allow a quote stitched from two adjacent fragments ("A … B"): both halves must appear.
-    parts = [p for p in re.split(r"[…]|\.\.\.", quote) if _norm(p)]
-    return len(parts) > 1 and all(_norm(p) in transcript_norm for p in parts)
+    # A quote spanning several lines or speakers counts only if every sentence in it appears verbatim.
+    parts = [_SPEAKER.sub("", p) for p in re.split(r"[\n。…]|\.\.\.", quote)]
+    parts = [_norm(p) for p in parts if len(_norm(p)) >= 3]
+    return len(parts) > 1 and all(p in transcript_norm for p in parts)
 
 
 def extract(transcript: str) -> dict:
