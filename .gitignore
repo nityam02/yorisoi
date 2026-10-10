@@ -16,3 +16,4 @@ services/api/var/
 .DS_Store
 tools/demo/node_modules/
 tools/demo/out/
+tools/demo/.ffmpeg-path
