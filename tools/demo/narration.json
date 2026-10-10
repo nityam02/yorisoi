@@ -1,0 +1,46 @@
+{
+ "voice": "Kore",
+ "style": "Read this clearly and warmly, at a natural, moderately brisk pace, like a product demo narrator:",
+ "segments": [
+  {
+   "id": "s1_title",
+   "kind": "card",
+   "text": "This is Yorisoi, an AI copilot for care workers who plan evacuations for people who cannot leave home alone."
+  },
+  {
+   "id": "s2_problem",
+   "kind": "card",
+   "text": "In 2011, people with disabilities died at nearly twice the rate of everyone else. Japan now asks every city to plan evacuations person by person. Six point seven million people are on the lists. Only fifteen percent have a plan, because each one is written by hand."
+  },
+  {
+   "id": "s3_hazard",
+   "kind": "app",
+   "text": "Care manager Sato's worklist is ranked by risk, and missing information counts as risk. Mrs Tanaka, eighty-four, lives alone in a deep flood zone. Before the visit, Yorisoi reads the national hazard map at her home, finds flood shelters, and checks the path for deep water, using public data tools, not the model."
+  },
+  {
+   "id": "s4_conversation",
+   "kind": "app",
+   "text": "The visit's conversation is recorded or typed in Japanese. Gemini extracts each fact with the exact words that support it, and anything it cannot quote is dropped. Then it drafts the plan in the government's official form."
+  },
+  {
+   "id": "s5_plan",
+   "kind": "app",
+   "text": "Every line has a source chip. Safety rules check the draft: her oxygen machine needs power, and one helper has no phone number. Sato adds the number, the rules run again, and the warning clears. Gemini can add notes, but it never changes the plan or clears a rule."
+  },
+  {
+   "id": "s6_approval",
+   "kind": "app",
+   "text": "Yorisoi writes an easy-read copy and a card for her helpers. Sato reads the plan back and records consent. The supervisor approves, and the plan is stamped. Approval stays blocked while any must-fix check remains."
+  },
+  {
+   "id": "s7_how",
+   "kind": "card",
+   "text": "It runs on Cloud Run with Gemini. The model reasons, public tools supply the facts, and a person approves. On our three sample interviews it found every helper and phone number. Those interviews are fictional, so next comes a pilot with real care workers."
+  },
+  {
+   "id": "s8_close",
+   "kind": "card",
+   "text": "Yorisoi. No one left behind when the water rises."
+  }
+ ]
+}

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=BIZ+UDPGothic:wght@400;700&family=BIZ+UDPMincho:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root { --paper:#f3f5f7; --ink:#1d2b36; --ink2:#4b5b68; --ai:#2b4e8c; --shu:#c4382c; --rule:#d6dde3; }
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: 'BIZ UDPGothic', sans-serif; color: var(--ink); background: var(--paper); }
+  .card { width: 1600px; height: 900px; padding: 110px 130px; display: none; position: relative; background: var(--paper); }
+  .card.on { display: block; }
+  .seal { width: 120px; height: 120px; }
+  h1 { font-size: 92px; letter-spacing: .01em; }
+  h1 .ja { font-family: 'BIZ UDPMincho', serif; font-weight: 700; font-size: 64px; color: var(--shu); margin-left: 28px; }
+  .lede { font-size: 38px; line-height: 1.5; max-width: 1180px; margin-top: 34px; color: var(--ink); }
+  .foot { position: absolute; left: 130px; bottom: 80px; font-size: 24px; color: var(--ink2); line-height: 1.6; }
+  .big { font-size: 220px; font-weight: 700; line-height: 1; color: var(--ai); }
+  .big small { font-size: 46px; color: var(--ink); font-weight: 400; display: block; margin-top: 18px; line-height: 1.4; max-width: 1150px; }
+  .facts { margin-top: 56px; display: grid; grid-template-columns: 1fr 1fr; gap: 28px 70px; font-size: 30px; line-height: 1.45; max-width: 1300px; }
+  .facts b { color: var(--shu); }
+  .how { display: grid; grid-template-columns: 760px 1fr; gap: 64px; align-items: center; height: 100%; }
+  .arch { display: grid; gap: 0; }
+  .arch .box { background: #fff; border: 1.5px solid #b8c3cc; border-radius: 8px; padding: 10px 14px; font-size: 17px; line-height: 1.35; color: var(--ink2); }
+  .arch .box b { display: block; color: var(--ink); font-size: 19px; margin-bottom: 2px; }
+  .arch .tools { border-color: var(--ai); }
+  .arch .human { border: 2.5px solid var(--ai); background: #e7edf6; }
+  .lane3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .lane2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .run { background: #e9edf0; border: 1.5px solid #b8c3cc; border-radius: 10px; padding: 10px 12px 12px; }
+  .runname { font-size: 17px; font-weight: 700; margin: 0 0 8px 2px; }
+  .down { height: 22px; width: 2px; background: #74838f; margin: 0 auto; position: relative; }
+  .down::after { content: ''; position: absolute; left: -5px; bottom: -2px; border: 6px solid transparent; border-top-color: #74838f; }
+    .how h2 { font-size: 46px; line-height: 1.25; margin-bottom: 36px; }
+  .how table { border-collapse: collapse; font-size: 28px; width: 100%; }
+  .how td { padding: 10px 0; border-bottom: 1px solid var(--rule); }
+  .how td + td { text-align: right; font-weight: 700; white-space: nowrap; padding-left: 16px; }
+  .how p { font-size: 22px; color: var(--ink2); margin-top: 18px; line-height: 1.5; }
+  .close { display: grid; place-content: center; text-align: center; height: 100%; }
+  .close .seal { margin: 0 auto 30px; width: 150px; height: 150px; }
+</style></head>
+<body>
+<svg width="0" height="0" style="position:absolute"><symbol id="seal" viewBox="0 0 64 64"><circle cx="32" cy="32" r="28" fill="none" stroke="#c4382c" stroke-width="3.5"/><text x="32" y="43" text-anchor="middle" font-size="30" font-family="BIZ UDPMincho, serif" fill="#c4382c">寄</text></symbol></svg>
+
+<section class="card" id="s1_title">
+  <svg class="seal"><use href="#seal"/></svg>
+  <h1 style="margin-top:40px">Yorisoi<span class="ja">寄り添い</span></h1>
+  <p class="lede">An AI copilot for the care workers who write evacuation plans for people who cannot leave home on their own.</p>
+  <p class="foot">Google Cloud AI Builder Cup 2026<br>Sustainability and Social Impact</p>
+</section>
+
+<section class="card" id="s2_problem">
+  <div class="big">15.1%<small>of the 6.70 million people on Japan's evacuation-assistance registers have a personal evacuation plan.</small></div>
+  <div class="facts">
+    <div><b>Nearly 2×</b> the death rate for people with disabilities in the 2011 tsunami (1.43% vs 0.78%).</div>
+    <div><b>By hand:</b> each plan needs an interview, a hazard check, a shelter, a route and two helpers.</div>
+  </div>
+  <p class="foot">Sources: Cabinet Office and Fire and Disaster Management Agency survey, 1 April 2026; NHK figures via Japan Disability Forum.</p>
+</section>
+
+<section class="card" id="s7_how">
+  <div class="how">
+    <div class="arch">
+      <div class="lane3">
+        <div class="box"><b>Conversation</b>recorded or typed; Gemini transcribes</div>
+        <div class="box"><b>Register record</b>fictional residents</div>
+        <div class="box"><b>Home point</b>GSI address search</div>
+      </div>
+      <div class="down"></div>
+      <div class="run">
+        <div class="runname">Cloud Run, Tokyo: one FastAPI service</div>
+        <div class="lane2">
+          <div class="box"><b>Extractor (Gemini)</b>facts with exact quotes; code drops any quote not in the transcript</div>
+          <div class="box tools"><b>Hazard tools (code)</b>flood depth from GSI tile colour; shelters certified for floods; path check</div>
+          <div class="box"><b>Planner (Gemini)</b>official form fields; every line cites evidence; shelter only from the tool list</div>
+          <div class="box"><b>Critic</b>safety rules in code, then a Gemini review that can only add notes</div>
+        </div>
+      </div>
+      <div class="down"></div>
+      <div class="box human"><b>Care worker edits, resident confirms, supervisor approves</b>approval blocked while a must-fix check remains</div>
+      <div class="down"></div>
+      <div class="box"><b>Official plan, easy-read copy, helper card, translation</b>printable, CSV export; Firestore audit log</div>
+    </div>
+    <div>
+      <h2>The model reasons. Public tools supply the facts. A person approves.</h2>
+      <table>
+        <tr><td>Helpers and phone numbers found</td><td>21 of 21</td></tr>
+        <tr><td>Key facts found</td><td>58 of 60</td></tr>
+        <tr><td>Items dropped for no exact quote</td><td>4 of 111</td></tr>
+      </table>
+      <p>Three runs over three fictional interviews we wrote (Gemini 3.1 Flash-Lite, 10 Oct 2026). A smoke test, not a benchmark: next comes a pilot with real care workers.</p>
+    </div>
+  </div>
+</section>
+
+<section class="card" id="s8_close">
+  <div class="close">
+    <svg class="seal"><use href="#seal"/></svg>
+    <h1>Yorisoi</h1>
+    <p class="lede" style="margin:24px auto 0">No one left behind when the water rises.</p>
+    <p style="font-size:24px;color:#4b5b68;margin-top:60px;line-height:1.6">Built with Gemini on Google Cloud Run.<br>All residents shown are fictional; hazard and shelter data are real public data from GSI and the MLIT Hazard Map Portal.</p>
+  </div>
+</section>
+</body></html>
