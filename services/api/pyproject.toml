@@ -1,0 +1,26 @@
+[project]
+name = "yorisoi-api"
+version = "0.1.0"
+description = "Yorisoi API: AI copilot for individual evacuation plans"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.143.0",
+    "google-genai>=2.29.0",
+    "httpx>=0.28.1",
+    "pillow>=12.3.0",
+    "pydantic>=2.14.0",
+    "python-dotenv>=1.2.4",
+    "python-multipart>=0.0.32",
+    "uvicorn[standard]>=0.54.0",
+]
+
+[dependency-groups]
+dev = [
+    "httpx2>=2.13.1",
+    "pytest>=9.1.1",
+]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
