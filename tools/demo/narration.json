@@ -27,9 +27,24 @@
    "text": "Every line has a source chip. Safety rules check the draft: her oxygen machine needs power, and one helper has no phone number. Sato adds the number, the rules run again, and the warning clears. Gemini can add notes, but it never changes the plan or clears a rule."
   },
   {
+   "id": "s5b_ito",
+   "kind": "app",
+   "text": "Next is Mr Ito, seventy-six, who uses a wheelchair. The same steps run on his conversation. This time the safety rules raise two warnings: only one helper is named, and nobody is named to drive him to a shelter more than a kilometre away. Sato asks Gemini to check the plan again. Its review adds notes, for example that a welfare taxi may not be running during a disaster. These notes guide the care worker; they never change the plan."
+  },
+  {
+   "id": "s5c_nguyen",
+   "kind": "app",
+   "text": "Minh is nine, and his mother reads Vietnamese more easily than Japanese. She agreed to share his plan only with his school and one neighbour, so the rules flag that her consent is limited to those people. Yorisoi then writes a Vietnamese copy of the plan for her, keeping names and addresses in Japanese, and adding nothing that is not in the plan."
+  },
+  {
    "id": "s6_approval",
    "kind": "app",
-   "text": "Yorisoi writes an easy-read copy and a card for her helpers. Sato reads the plan back and records consent. The supervisor approves, and the plan is stamped. Approval stays blocked while any must-fix check remains."
+   "text": "Back with Mrs Tanaka, Yorisoi writes an easy-to-read copy and a card for her helpers. Sato reads the plan back and records consent. The supervisor approves, and the plan is stamped. Approval stays blocked while any must-fix check remains."
+  },
+  {
+   "id": "s6b_coverage",
+   "kind": "app",
+   "text": "Back on the worklist, one approved plan out of six already passes Japan's national coverage line of fifteen percent."
   },
   {
    "id": "s7_how",

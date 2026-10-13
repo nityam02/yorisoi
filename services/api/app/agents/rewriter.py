@@ -39,5 +39,18 @@ def supporter_card(plan: dict) -> str:
     return llm.text(settings.model_fast, CARD, _plan_text(plan), thinking="LOW")
 
 
+def _mostly_japanese(text: str) -> bool:
+    kana_kanji = sum(1 for ch in text if "\u3040" <= ch <= "\u30ff" or "\u4e00" <= ch <= "\u9fff")
+    letters = sum(1 for ch in text if ch.isalpha())
+    return letters > 0 and kana_kanji / letters > 0.3
+
+
 def translate(plan: dict, lang: str) -> str:
-    return llm.text(settings.model_fast, TRANSLATE.format(lang=LANG_NAMES.get(lang, lang)), _plan_text(plan), thinking="LOW")
+    name = LANG_NAMES.get(lang, lang)
+    ask = f"Target language: {name}. Write every sentence in {name}; only names and addresses stay in Japanese.\n\n"
+    out = llm.text(settings.model_fast, TRANSLATE.format(lang=name), ask + _plan_text(plan), thinking="LOW")
+    if lang not in ("ja", "zh") and _mostly_japanese(out):  # smaller fallback models sometimes ignore the target
+        out = llm.text(settings.model_fast, TRANSLATE.format(lang=name),
+                       f"Your previous answer was in Japanese. Answer entirely in {name}.\n\n" + ask + _plan_text(plan),
+                       thinking="LOW")
+    return out

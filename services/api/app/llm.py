@@ -69,8 +69,8 @@ def _call(model: str, contents, config: types.GenerateContentConfig):
                     continue
                 if code == 429:
                     _cooldown[m] = time.time() + 600  # out of quota: skip this model for 10 minutes
-                if code in (429, 500, 502, 503, 504):
-                    break  # quota or capacity: move to the next model in the chain
+                if code in (404, 429, 500, 502, 503, 504):
+                    break  # retired model, quota or capacity: move to the next model in the chain
                 raise LLMUnavailable(f"Gemini call failed on {m}: {exc}") from exc
     raise LLMUnavailable(f"All models busy or out of quota (last: {last})")
 

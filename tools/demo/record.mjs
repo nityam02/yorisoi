@@ -1,4 +1,4 @@
-// Records the four app segments of the demo video against the running app (real Gemini calls).
+// Records the app segments of the demo video against the running app (real Gemini calls).
 // Usage: node record.mjs   (server on http://localhost:8080; writes out/video/<segment>.webm + out/video/marks.json)
 import { chromium } from 'playwright'
 import { mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -51,7 +51,10 @@ async function click(page, locator, { wait = 0.35 } = {}) {
   await locator.click()
 }
 
-await (await browser.newPage()).request.delete(`${BASE}/api/residents/${RID}/plan`)
+{
+  const api = (await browser.newPage()).request
+  for (const id of ['R001', 'R002', 'R003']) await api.delete(`${BASE}/api/residents/${id}/plan`)
+}
 
 // s3: worklist ranked by risk, then the hazard brief.
 await segment('s3_hazard', async (page, mark) => {
@@ -120,6 +123,79 @@ await segment('s5_plan', async (page, mark) => {
   await pause(page, Math.max(2.5, durations.s5_plan - 15))
 })
 
+// s5b: Mr Ito (wheelchair): rules flag one helper and no named driver; Gemini review adds notes.
+await segment('s5b_ito', async (page, mark) => {
+  await page.goto(`${BASE}/`)
+  await page.waitForSelector('.wl-item')
+  mark('ready')
+  await pause(page, 1.2)
+  await click(page, page.locator('.wl-item', { hasText: '伊藤' }))
+  await page.waitForSelector('.gauge')
+  await pause(page, 1.2)
+  await click(page, page.getByRole('button', { name: 'Start the conversation' }))
+  await click(page, page.getByRole('button', { name: 'Use sample conversation' }))
+  await pause(page, 1.5)
+  await click(page, page.getByRole('button', { name: 'Draft plan' }))
+  mark('draft_click')
+  await page.waitForSelector('.form', { timeout: 240000 })
+  mark('plan_shown')
+  await pause(page, 1)
+  for (const text of ['Only one supporter', 'not tied to a named person']) {
+    const f = page.locator('.flag', { hasText: text })
+    if (await f.count()) {
+      await f.first().scrollIntoViewIfNeeded()
+      const box = await f.first().boundingBox()
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 15 })
+      await pause(page, 2.5)
+    }
+  }
+  await click(page, page.getByRole('button', { name: 'Check again with Gemini' }))
+  mark('review_click')
+  await page.waitForSelector('.flag-meta span:text("Gemini review")', { timeout: 240000 })
+  mark('review_shown')
+  const ai = page.locator('.flag', { hasText: 'Gemini review' }).first()
+  await ai.scrollIntoViewIfNeeded()
+  const box = await ai.boundingBox()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 15 })
+  await pause(page, 5)
+})
+
+// s5c: Minh Nguyen (child, Vietnamese-speaking mother): limited consent flagged; Vietnamese copy.
+await segment('s5c_nguyen', async (page, mark) => {
+  await page.goto(`${BASE}/`)
+  await page.waitForSelector('.wl-item')
+  mark('ready')
+  await pause(page, 1.2)
+  await click(page, page.locator('.wl-item', { hasText: 'グエン' }))
+  await page.waitForSelector('.gauge')
+  await pause(page, 1)
+  await click(page, page.getByRole('button', { name: 'Start the conversation' }))
+  await click(page, page.getByRole('button', { name: 'Use sample conversation' }))
+  await pause(page, 1.5)
+  await click(page, page.getByRole('button', { name: 'Draft plan' }))
+  mark('draft_click')
+  await page.waitForSelector('.form', { timeout: 240000 })
+  mark('plan_shown')
+  await page.locator('#row-consent').scrollIntoViewIfNeeded()
+  await pause(page, 1)
+  const f = page.locator('.flag', { hasText: 'Consent looks limited' })
+  if (await f.count()) {
+    await f.first().scrollIntoViewIfNeeded()
+    const box = await f.first().boundingBox()
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 15 })
+    await pause(page, 3.5)
+  }
+  await click(page, page.getByRole('button', { name: 'Copies and approval' }))
+  await click(page, page.getByRole('tab', { name: /Translation/ }))
+  await click(page, page.getByRole('button', { name: 'Write the copies' }).first())
+  mark('copies_click')
+  // The placeholder text disappears once Gemini's copies are in.
+  await page.waitForSelector('text=These copies are written by Gemini', { state: 'detached', timeout: 240000 })
+  mark('copies_shown')
+  await page.mouse.move(700, 420, { steps: 20 })
+  await pause(page, 5)
+})
+
 // s6: copies and approval with the hanko seal.
 await segment('s6_approval', async (page, mark) => {
   await page.goto(`${BASE}/#/${RID}`)
@@ -143,6 +219,16 @@ await segment('s6_approval', async (page, mark) => {
   mark('stamped')
   await page.mouse.move(1100, 330, { steps: 10 })
   await pause(page, 3.5)
+})
+
+// s6b: back on the worklist, the approved-plan count passes the national mark.
+await segment('s6b_coverage', async (page, mark) => {
+  await page.goto(`${BASE}/`)
+  await page.waitForSelector('.coverage')
+  mark('ready')
+  await pause(page, 1)
+  await page.mouse.move(160, 170, { steps: 25 })
+  await pause(page, 6)
 })
 
 writeFileSync(`${OUT}marks.json`, JSON.stringify(marks, null, 1))

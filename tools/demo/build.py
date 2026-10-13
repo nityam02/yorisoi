@@ -14,7 +14,7 @@ OUT = DEMO / "out"
 FF = (DEMO / ".ffmpeg-path").read_text().strip()
 FPS = 30
 W, H = 1920, 1080
-PAD = 0.5  # seconds of breathing room after each narration line
+PAD = 1.0  # seconds of breathing room after each narration line
 
 cfg = json.loads((DEMO / "narration.json").read_text())
 marks = json.loads((OUT / "video" / "marks.json").read_text())
@@ -55,21 +55,70 @@ def card_clip(seg_id: str, dur: float) -> Path:
     return out
 
 
+# Waits on Gemini, per segment: (from mark, offset, to mark, offset). Each is compressed to ~1.6 s.
+WAITS = {
+    "s4_conversation": [("draft_click", 1.5, "plan_shown", -0.3)],
+    "s5b_ito": [("draft_click", 1.5, "plan_shown", -0.3), ("review_click", 1.0, "review_shown", 0.0)],
+    "s5c_nguyen": [("draft_click", 1.5, "plan_shown", -0.3), ("copies_click", 1.0, "copies_shown", 0.0)],
+    "s6_approval": [("copies_click", 1.0, "copies_shown", 0.0)],
+}
+# Playback speed of the normal-speed pieces around the waits (before wait 1, between waits, after the last).
+# The conversation step repeats what the viewer saw for Mrs Tanaka, so it plays faster for Ito and Nguyen.
+SPEEDS = {"s5b_ito": [2.0, 1.4, 1.0], "s5c_nguyen": [2.0, 1.0, 1.0]}
+IDLE_MIN = 20.0  # an unchanged screen longer than this is a recording stall, not a deliberate pause
+
+
+def idle_spans(src: Path, a: float, b: float) -> list[tuple[float, float]]:
+    """Stretches inside [a, b] where the picture does not change for IDLE_MIN seconds or more."""
+    from PIL import Image, ImageChops  # imported here: only needed for app segments
+
+    tmp = work / f"idle_{src.stem}"
+    if tmp.exists():
+        for f in tmp.iterdir():
+            f.unlink()
+    tmp.mkdir(exist_ok=True)
+    run("-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", str(src), "-vf", "fps=2,scale=320:-1", str(tmp / "f_%05d.png"))
+    frames = sorted(tmp.iterdir())
+    spans, run_start, prev = [], None, None
+    for i, f in enumerate(frames):
+        im = Image.open(f).convert("L")
+        still = prev is not None and sum(ImageChops.difference(im, prev).getdata()) / (im.width * im.height) < 0.15
+        t = a + i / 2
+        if still and run_start is None:
+            run_start = t - 0.5
+        if (not still or i == len(frames) - 1) and run_start is not None:
+            if t - run_start >= IDLE_MIN:
+                spans.append((run_start + 0.5, t - 0.5))
+            run_start = None
+        prev = im
+    return spans
+
+
 def app_clip(seg_id: str, dur: float) -> Path:
-    """Cut the recording into pieces (waiting stretches compressed), then fit to the narration length."""
+    """Cut the recording into pieces (Gemini waits and stalls compressed), then fit to the narration length."""
     m = marks[seg_id]
     src = OUT / "video" / f"{seg_id}.webm"
-    pieces = []  # (start, end, speed)
-    if seg_id == "s4_conversation":
-        pieces = [(m["ready"], m["draft_click"] + 1.5, 1.0), (m["draft_click"] + 1.5, m["plan_shown"] - 0.3, None),
-                  (m["plan_shown"] - 0.3, m["end"], 1.0)]
-    elif seg_id == "s6_approval":
-        pieces = [(m["ready"], m["copies_click"] + 1.0, 1.0), (m["copies_click"] + 1.0, m["copies_shown"], None),
-                  (m["copies_shown"], m["end"], 1.0)]
-    else:
-        pieces = [(m["ready"], m["end"], 1.0)]
+    waits = [(m[a] + da, m[b] + db) for a, da, b, db in WAITS.get(seg_id, [])]
+    speeds = SPEEDS.get(seg_id, [1.0] * (len(waits) + 1))
+    pieces, cursor = [], m["ready"]  # (start, end, speed); speed None = compress
+    for k, (wa, wb) in enumerate(waits):
+        pieces.append((cursor, wa, speeds[k]))
+        pieces.append((wa, wb, None))
+        cursor = wb
+    pieces.append((cursor, m["end"], speeds[len(waits)]))
+    expanded = []
+    for a, b, speed in pieces:
+        if speed is None or speed != 1.0 or b - a < IDLE_MIN:
+            expanded.append((a, b, speed))
+            continue
+        c = a
+        for ia, ib in idle_spans(src, a, b):
+            print(f"  {seg_id}: compressing a {ib - ia:.1f}s unchanged stretch at {ia:.1f}s")
+            expanded += [(c, ia, 1.0), (ia, ib, (ib - ia) / 0.5)]
+            c = ib
+        expanded.append((c, b, 1.0))
     parts = []
-    for i, (a, b, speed) in enumerate(pieces):
+    for i, (a, b, speed) in enumerate(x for x in expanded if x[1] - x[0] > 0.05):
         speed = speed or max(1.0, (b - a) / 1.6)  # compress a model wait to ~1.6 s
         p = work / f"{seg_id}.p{i}.mp4"
         run("-ss", f"{a:.3f}", "-to", f"{b:.3f}", "-i", str(src), "-an",
@@ -96,10 +145,19 @@ def srt_time(t: float) -> str:
     return f"{ms // 3600000:02}:{ms // 60000 % 60:02}:{ms // 1000 % 60:02},{ms % 1000:03}"
 
 
+TARGET = 180.0  # the rules say 3-4 minutes; the upload field says up to 3 minutes. Exactly 3:00 meets both.
+
 segments, captions, t = [], [], 0.0
-for seg in cfg["segments"]:
+order = cfg["segments"]
+for k, seg in enumerate(order):
     audio, speech = trimmed_audio(seg["id"])
     dur = speech + PAD + (0.6 if seg["kind"] == "card" else 0.0)
+    if k == len(order) - 1:  # the closing card absorbs whatever makes the total exactly TARGET
+        built = sum(probe_duration(c) for c in segments)
+        dur = TARGET - built + 0.2  # a little over; the final encode trims to TARGET exactly
+        if dur < speech + 0.5:
+            raise SystemExit(f"Narration too long for {TARGET}s: closing card would be {dur:.1f}s")
+        print(f"  closing card held for {dur:.1f}s to reach {TARGET:.0f}s")
     video = card_clip(seg["id"], dur) if seg["kind"] == "card" else app_clip(seg["id"], dur)
     clip = work / f"{seg['id']}.mp4"
     run("-i", str(video), "-i", str(audio), "-filter_complex", f"[1:a]apad=whole_dur={dur:.3f},aresample=48000[a]",
@@ -113,7 +171,7 @@ for seg in cfg["segments"]:
         span = speech * len(s) / total
         captions.append((c, c + span, s))
         c += span
-    t += dur
+    t += probe_duration(clip)
 
 (work / "all.txt").write_text("".join(f"file '{p.name}'\n" for p in segments))
 joined = work / "joined.mp4"
@@ -124,6 +182,7 @@ srt.write_text("".join(f"{i}\n{srt_time(a)} --> {srt_time(b)}\n{text}\n\n" for i
 final = OUT / "yorisoi-demo.mp4"
 style = ("FontName=Helvetica Neue,FontSize=10.5,PrimaryColour=&H00362B1D,BorderStyle=1,"
          "Outline=0,Shadow=0,MarginV=7,MarginL=40,MarginR=40,Alignment=2")
-run("-i", str(joined.resolve()), "-vf", f"subtitles={srt.name}:force_style='{style}'", "-c:v", "libx264", "-crf", "20",
-    "-preset", "medium", "-c:a", "copy", "-movflags", "+faststart", str(final.resolve()), cwd=work)
-print(f"wrote {final}  ({probe_duration(final):.1f} s)")
+run("-i", str(joined.resolve()), "-vf", f"subtitles={srt.name}:force_style='{style}'",
+    "-af", f"apad,atrim=0:{TARGET}", "-t", f"{TARGET}", "-c:v", "libx264", "-crf", "20", "-preset", "medium",
+    "-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", str(final.resolve()), cwd=work)
+print(f"wrote {final}  ({probe_duration(final):.2f} s)")
