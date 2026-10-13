@@ -15,6 +15,9 @@ Yorisoi does the slow parts and keeps a person in charge:
 4. **Checks:** safety rules in code (shelter certified for the hazard, two helpers with phone numbers, power for medical devices, consent, transport…) plus a Gemini review that can only add notes.
 5. **Copies and approval:** easy-read Japanese (やさしい日本語), a helper card and a translation; the care worker confirms with the resident, a supervisor approves (blocked while a must-fix check remains), and the plan is stamped.
 
+**Links:** [demo video (3:00)](https://github.com/nityam02/yorisoi/releases/download/v1.0/yorisoi-demo.mp4) ·
+live prototype: Cloud Run URL added at deployment · pitch deck built from the organiser's template by [`tools/deck`](tools/deck).
+
 > **All residents and interviews in this repository are fictional.** Coordinates are district centre points, not homes.
 > Hazard and shelter data are real public data. Outputs are drafts that require human approval.
 
