@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # Deploy Yorisoi to Cloud Run (Tokyo) from source. Plans are stored in Firestore.
 #
-#   PROJECT=my-gcp-project ./infra/deploy.sh            # Gemini API key from ../.env, stored in Secret Manager
+#   PROJECT=my-gcp-project ./infra/deploy.sh            # Gemini API key from .env (or $GEMINI_API_KEY) → Secret Manager
 #   PROJECT=my-gcp-project USE_VERTEX=1 ./infra/deploy.sh   # Vertex AI with the project's credits instead of a key
 #
 # Needs: gcloud CLI, logged in (gcloud auth login), billing enabled on the project.
 set -euo pipefail
+export CLOUDSDK_CORE_DISABLE_PROMPTS=1  # never stop on a yes/no prompt
 
 PROJECT=${PROJECT:?Set PROJECT to your Google Cloud project id}
 REGION=${REGION:-asia-northeast1}
@@ -36,7 +37,7 @@ if [[ "${USE_VERTEX:-0}" == "1" ]]; then
   gcloud projects add-iam-policy-binding "$PROJECT" --member="serviceAccount:$RUNTIME_SA" \
     --role=roles/aiplatform.user --condition=None >/dev/null
 else
-  KEY=$(grep -E '^GEMINI_API_KEY=' "$ROOT/.env" | cut -d= -f2- || true)
+  KEY=${GEMINI_API_KEY:-$(grep -E '^GEMINI_API_KEY=' "$ROOT/.env" 2>/dev/null | cut -d= -f2- || true)}
   [[ -n "$KEY" ]] || { echo "No GEMINI_API_KEY in $ROOT/.env (or use USE_VERTEX=1)"; exit 1; }
   if ! gcloud secrets describe "$SECRET" >/dev/null 2>&1; then
     gcloud secrets create "$SECRET" --replication-policy=automatic >/dev/null
@@ -47,13 +48,13 @@ else
   SECRET_FLAGS=(--set-secrets "GEMINI_API_KEY=$SECRET:latest")
 fi
 
-MAPS_KEY=$(grep -E '^MAPS_API_KEY=' "$ROOT/.env" | cut -d= -f2- || true)
+MAPS_KEY=${MAPS_API_KEY:-$(grep -E '^MAPS_API_KEY=' "$ROOT/.env" 2>/dev/null | cut -d= -f2- || true)}
 [[ -n "$MAPS_KEY" ]] && ENV_VARS="$ENV_VARS,MAPS_API_KEY=$MAPS_KEY"
 
 echo "Building and deploying $SERVICE to Cloud Run ($REGION)..."
-gcloud run deploy "$SERVICE" --source "$ROOT" --region "$REGION" --allow-unauthenticated \
+gcloud run deploy "$SERVICE" --source "$ROOT" --region "$REGION" --allow-unauthenticated --quiet \
   --memory 1Gi --cpu 1 --min-instances 1 --max-instances 3 --timeout 300 \
-  --set-env-vars "$ENV_VARS" "${SECRET_FLAGS[@]}"
+  --set-env-vars "$ENV_VARS" ${SECRET_FLAGS[@]+"${SECRET_FLAGS[@]}"}
 
 URL=$(gcloud run services describe "$SERVICE" --region "$REGION" --format='value(status.url)')
 echo "Deployed: $URL"
