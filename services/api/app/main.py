@@ -5,18 +5,27 @@ import io
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import llm, store
+from . import guard, llm, store
 from .agents import critic, extractor, planner, rewriter, transcriber
 from .config import settings
 from .hazard import hazard_brief, priority
 from .models import OutputsRequest, PlanEdit, StatusChange, TranscriptIn
 from .tools.routes import walking_route
 
-app = FastAPI(title="Yorisoi API", version="0.1.0")
+app = FastAPI(title="Yorisoi API", version="0.1.0", docs_url=None, redoc_url=None, openapi_url=None)
+
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    resp = await call_next(request)
+    resp.headers["X-Content-Type-Options"] = "nosniff"
+    resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    resp.headers["X-Frame-Options"] = "DENY"
+    return resp
 
 
 def _resident_or_404(rid: str) -> dict:
@@ -26,8 +35,8 @@ def _resident_or_404(rid: str) -> dict:
     return r
 
 
-def _bundle_or_404(rid: str) -> dict:
-    b = store.plans.get(rid)
+def _bundle_or_404(key: str) -> dict:
+    b = store.plans.get(key)
     if not b:
         raise HTTPException(404, "No plan yet for this resident")
     return b
@@ -51,11 +60,11 @@ def health():
 
 
 @app.get("/api/residents")
-def list_residents():
+def list_residents(request: Request):
     rows = []
     for r in store.residents():
         brief = hazard_brief(r["lat"], r["lon"])
-        b = store.plans.get(r["id"])
+        b = store.plans.get(guard.plan_key(request, r["id"]))
         rows.append({
             **{k: r[k] for k in ("id", "name", "name_en", "age", "address", "care_level", "household", "language")},
             "flood": brief["home"]["flood"],
@@ -69,36 +78,40 @@ def list_residents():
 
 
 @app.get("/api/stats")
-def stats():
+def stats(request: Request):
     rs = store.residents()
-    approved = sum(1 for r in rs if (store.plans.get(r["id"]) or {}).get("status") == "approved")
+    approved = sum(1 for r in rs if (store.plans.get(guard.plan_key(request, r["id"])) or {}).get("status") == "approved")
     return {"registered": len(rs), "approved_plans": approved, "coverage": round(approved / len(rs), 3) if rs else 0,
             "national_reference": {"registered": 6_696_718, "with_plans": 1_014_017, "coverage": 0.151,
                                    "as_of": "2026-04-01", "source": "Cabinet Office and FDMA survey"}}
 
 
 @app.get("/api/residents/{rid}")
-def get_resident(rid: str):
+def get_resident(rid: str, request: Request):
     r = _resident_or_404(rid)
     brief = hazard_brief(r["lat"], r["lon"])
-    return {"resident": r, "hazard": brief, "priority": priority(r, brief), "plan": store.plans.get(rid),
+    return {"resident": r, "hazard": brief, "priority": priority(r, brief), "plan": store.plans.get(guard.plan_key(request, rid)),
             "sample_interview": store.sample_interview(rid)}
 
 
 @app.post("/api/residents/{rid}/transcribe")
-async def transcribe(rid: str, audio: UploadFile = File(...)):
+async def transcribe(rid: str, request: Request, audio: UploadFile = File(...)):
     _resident_or_404(rid)
     data = await audio.read()
     if len(data) > 20 * 1024 * 1024:
         raise HTTPException(413, "Audio over 20 MB; upload a shorter recording")
+    guard.charge(request, 1)
     return {"transcript": _llm_guard(transcriber.transcribe, data, audio.content_type or "audio/webm")}
 
 
 @app.post("/api/residents/{rid}/draft")
-def draft(rid: str, body: TranscriptIn):
+def draft(rid: str, body: TranscriptIn, request: Request):
     r = _resident_or_404(rid)
     if len(body.transcript.strip()) < 20:
         raise HTTPException(400, "Transcript is too short")
+    if len(body.transcript) > guard.MAX_TRANSCRIPT_CHARS:
+        raise HTTPException(413, f"Transcript over {guard.MAX_TRANSCRIPT_CHARS} characters; split the conversation")
+    guard.charge(request, 2)
     brief = hazard_brief(r["lat"], r["lon"])
     ex = _llm_guard(extractor.extract, body.transcript)
     pl = _llm_guard(planner.draft, r, ex["extraction"], brief)
@@ -110,28 +123,29 @@ def draft(rid: str, body: TranscriptIn):
         "flags": flags, "outputs": {}, "models": {"extract": ex["model"], "plan": pl["model"]}, "audit": [],
     }
     _audit(bundle, body.actor, "draft_created", f"{len(ex['extraction']['facts'])} facts, {len(ex['rejected'])} dropped")
-    store.plans.put(rid, bundle)
+    store.plans.put(guard.plan_key(request, rid), bundle)
     return bundle
 
 
 @app.post("/api/residents/{rid}/plan/review")
-def review(rid: str):
+def review(rid: str, request: Request):
     r = _resident_or_404(rid)
-    b = _bundle_or_404(rid)
+    b = _bundle_or_404(guard.plan_key(request, rid))
+    guard.charge(request, 1)
     brief = hazard_brief(r["lat"], r["lon"])
     rules = critic.rule_flags(b["plan"], brief, b["extraction"], b.get("rejected"), b.get("dropped_citations"))
     ai = _llm_guard(critic.ai_review, b["plan"], b["evidence"], rules)
     b["flags"] = rules + ai
     b["models"]["review"] = llm.last_model()
     _audit(b, "yorisoi", "ai_review", f"{len(ai)} AI notes")
-    store.plans.put(rid, b)
+    store.plans.put(guard.plan_key(request, rid), b)
     return b
 
 
 @app.put("/api/residents/{rid}/plan")
-def edit_plan(rid: str, body: PlanEdit):
+def edit_plan(rid: str, body: PlanEdit, request: Request):
     r = _resident_or_404(rid)
-    b = _bundle_or_404(rid)
+    b = _bundle_or_404(guard.plan_key(request, rid))
     if b["status"] == "approved":
         raise HTTPException(409, "Approved plans are locked; set status back to draft to edit")
     brief = hazard_brief(r["lat"], r["lon"])
@@ -151,14 +165,14 @@ def edit_plan(rid: str, body: PlanEdit):
     b["flags"] = critic.rule_flags(b["plan"], brief, b["extraction"], b.get("rejected"), b.get("dropped_citations")) + ai
     b["outputs"] = {}  # outputs must be regenerated from the edited plan
     _audit(b, body.actor, "edited", body.note)
-    store.plans.put(rid, b)
+    store.plans.put(guard.plan_key(request, rid), b)
     return b
 
 
 @app.post("/api/residents/{rid}/plan/status")
-def set_status(rid: str, body: StatusChange):
+def set_status(rid: str, body: StatusChange, request: Request):
     _resident_or_404(rid)
-    b = _bundle_or_404(rid)
+    b = _bundle_or_404(guard.plan_key(request, rid))
     if body.status == "approved":
         if b["status"] != "reviewed_with_resident":
             raise HTTPException(409, "Review the plan with the resident before approval")
@@ -168,14 +182,15 @@ def set_status(rid: str, body: StatusChange):
                                      + "; ".join(f["message"] for f in blocking))
     b["status"] = body.status
     _audit(b, body.actor, f"status:{body.status}")
-    store.plans.put(rid, b)
+    store.plans.put(guard.plan_key(request, rid), b)
     return b
 
 
 @app.post("/api/residents/{rid}/plan/outputs")
-def outputs(rid: str, body: OutputsRequest):
+def outputs(rid: str, body: OutputsRequest, request: Request):
     r = _resident_or_404(rid)
-    b = _bundle_or_404(rid)
+    b = _bundle_or_404(guard.plan_key(request, rid))
+    guard.charge(request, len(body.kinds))
     out = b.setdefault("outputs", {})
     lang = body.language or (r["language"] if r["language"] != "ja" else "en")
     jobs = {"easy_read": (rewriter.easy_read, b["plan"]), "supporter_card": (rewriter.supporter_card, b["plan"]),
@@ -193,21 +208,21 @@ def outputs(rid: str, body: OutputsRequest):
     for k, v in results.items():
         out[k] = {"language": lang, "text": v} if k == "translation" else v
     _audit(b, "yorisoi", "outputs_generated", ",".join(body.kinds))
-    store.plans.put(rid, b)
+    store.plans.put(guard.plan_key(request, rid), b)
     return b
 
 
 @app.delete("/api/residents/{rid}/plan")
-def reset_plan(rid: str):
+def reset_plan(rid: str, request: Request):
     _resident_or_404(rid)
-    store.plans.delete(rid)
+    store.plans.delete(guard.plan_key(request, rid))
     return {"ok": True}
 
 
 @app.get("/api/residents/{rid}/plan/export.csv", response_class=PlainTextResponse)
-def export_csv(rid: str):
+def export_csv(rid: str, request: Request):
     r = _resident_or_404(rid)
-    b = _bundle_or_404(rid)
+    b = _bundle_or_404(guard.plan_key(request, rid))
     p = b["plan"]
     sup = p.get("supporters", []) + [{}, {}]
     con = p.get("emergency_contacts", []) + [{}, {}]
@@ -237,7 +252,13 @@ _dist: Path = settings.web_dist
 if _dist.exists():
     app.mount("/assets", StaticFiles(directory=_dist / "assets"), name="assets")
 
+    _root = _dist.resolve()
+
     @app.get("/{path:path}", include_in_schema=False)
     def spa(path: str):
-        target = _dist / path
-        return FileResponse(target if path and target.is_file() else _dist / "index.html")
+        # Serve only real files inside the built web app; everything else gets the app shell.
+        # resolve() + is_relative_to() blocks "../" traversal, including percent-encoded forms.
+        target = (_root / path).resolve()
+        if path and target.is_relative_to(_root) and target.is_file():
+            return FileResponse(target)
+        return FileResponse(_root / "index.html")

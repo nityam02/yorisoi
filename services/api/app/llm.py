@@ -1,12 +1,14 @@
 """Thin wrapper around the Google Gen AI SDK (Gemini API key or Vertex AI)."""
 
 import logging
+import os
 import re
 import threading
 import time
 from functools import lru_cache
 from typing import TypeVar
 
+import httpx
 from google import genai
 from google.genai import errors, types
 from pydantic import BaseModel
@@ -16,7 +18,10 @@ from .config import settings
 T = TypeVar("T", bound=BaseModel)
 log = logging.getLogger("yorisoi.llm")
 _local = threading.local()
-_cooldown: dict[str, float] = {}  # model -> time until which it is skipped after a 429
+_cooldown: dict[str, float] = {}  # model -> time until which it is skipped after a 429 or a timeout
+# The preferred model gets a short deadline when a fallback exists, so one slow model cannot stall a request.
+FIRST_MODEL_TIMEOUT_S = float(os.getenv("YORISOI_FIRST_MODEL_TIMEOUT", "25"))
+FALLBACK_TIMEOUT_S = float(os.getenv("YORISOI_FALLBACK_TIMEOUT", "120"))
 
 
 def last_model() -> str | None:
@@ -53,13 +58,20 @@ def _call(model: str, contents, config: types.GenerateContentConfig):
     last = None
     chain = _chain(model)
     ready = [m for m in chain if _cooldown.get(m, 0) < time.time()] or chain
-    for m in ready:
+    for i, m in enumerate(ready):
         cfg = config if _supports_thinking_level(m) else config.model_copy(update={"thinking_config": None})
+        deadline = FIRST_MODEL_TIMEOUT_S if i == 0 and len(ready) > 1 else FALLBACK_TIMEOUT_S
+        cfg = cfg.model_copy(update={"http_options": types.HttpOptions(timeout=int(deadline * 1000))})
         for attempt in range(2):
             try:
                 resp = client().models.generate_content(model=m, contents=contents, config=cfg)
                 _local.model = m
                 return resp
+            except httpx.TimeoutException as exc:
+                last = exc
+                log.warning("Gemini %s timed out after %.0fs; trying the next model", m, deadline)
+                _cooldown[m] = time.time() + 600  # slow right now: skip it for 10 minutes
+                break
             except errors.APIError as exc:
                 last = exc
                 code = getattr(exc, "code", None)
@@ -69,8 +81,8 @@ def _call(model: str, contents, config: types.GenerateContentConfig):
                     continue
                 if code == 429:
                     _cooldown[m] = time.time() + 600  # out of quota: skip this model for 10 minutes
-                if code in (404, 429, 500, 502, 503, 504):
-                    break  # retired model, quota or capacity: move to the next model in the chain
+                if code in (402, 404, 429, 500, 502, 503, 504):
+                    break  # retired model, credits, quota or capacity: move to the next model in the chain
                 raise LLMUnavailable(f"Gemini call failed on {m}: {exc}") from exc
     raise LLMUnavailable(f"All models busy or out of quota (last: {last})")
 

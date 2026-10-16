@@ -64,7 +64,7 @@ export function ConversationStep({ id, sample, existing, onDrafted }: {
   }
 
   const draft = async () => {
-    setBusy('Extracting facts with their quotes, checking hazards, drafting the plan and running safety checks. This takes about 15 seconds.')
+    setBusy('Extracting facts with their quotes, checking hazards, drafting the plan and running safety checks. This usually takes 10 to 40 seconds.')
     setError(null)
     try {
       onDrafted(await api.draft(id, text))

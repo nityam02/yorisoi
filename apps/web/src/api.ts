@@ -122,8 +122,26 @@ export type Stats = {
   national_reference: { registered: number; with_plans: number; coverage: number; as_of: string; source: string }
 }
 
+// Each browser gets its own private sandbox on the shared demo, so visitors never see or overwrite each other's plans.
+function sandboxId(): string {
+  const make = () => (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/[^A-Za-z0-9-]/g, '')
+  try {
+    let id = localStorage.getItem('yorisoi-sandbox')
+    if (!id) {
+      id = make()
+      localStorage.setItem('yorisoi-sandbox', id)
+    }
+    return id
+  } catch {
+    return (window as unknown as { __yorisoiSandbox?: string }).__yorisoiSandbox ??= make()
+  }
+}
+const SANDBOX = sandboxId()
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api${path}`, init)
+  const headers = new Headers(init?.headers)
+  headers.set('X-Yorisoi-Session', SANDBOX)
+  const res = await fetch(`/api${path}`, { ...init, headers })
   if (!res.ok) {
     let detail = `${res.status} ${res.statusText}`
     try {
@@ -156,7 +174,7 @@ export const api = {
     form.append('audio', audio, 'conversation.webm')
     return call<{ transcript: string }>(`/residents/${id}/transcribe`, { method: 'POST', body: form })
   },
-  csvUrl: (id: string) => `/api/residents/${id}/plan/export.csv`,
+  csvUrl: (id: string) => `/api/residents/${id}/plan/export.csv?sid=${SANDBOX}`,
 }
 
 export const LEGEND: { id: number; ja: string; en: string; color: string }[] = [
