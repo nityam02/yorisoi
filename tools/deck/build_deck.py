@@ -543,7 +543,7 @@ def s_links(slide, prototype_url):
     box(slide, X0, 2.55, XW, 1.62, fill=GREY_T)
     steps = ["Open the live link and pick Hana Tanaka, the highest-risk resident.",
              "Read the hazard brief: flood depth at her home, flood shelters, the path.",
-             "Start the conversation, choose “Use sample conversation”, then “Draft plan” (about 15 seconds).",
+             "Start the conversation, choose “Use sample conversation”, then “Draft plan” (10 to 40 seconds).",
              "Click any source chip to see the exact words a line came from; read the checks on the right.",
              "Open “Copies and approval”: write the copies, mark as reviewed, approve, and see the seal."]
     paras = [P(R("Try it in two minutes", 12, F_SEMI, INK), after=5)]
