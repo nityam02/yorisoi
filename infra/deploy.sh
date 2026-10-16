@@ -1,20 +1,38 @@
 #!/usr/bin/env bash
 # Deploy Yorisoi to Cloud Run (Tokyo) from source. Plans are stored in Firestore.
 #
-#   PROJECT=my-gcp-project ./infra/deploy.sh            # Gemini API key from .env (or $GEMINI_API_KEY) → Secret Manager
-#   PROJECT=my-gcp-project USE_VERTEX=1 ./infra/deploy.sh   # Vertex AI with the project's credits instead of a key
+#   USE_VERTEX=1 ./infra/deploy.sh      # Gemini via Vertex AI, billed to the project (recommended)
+#   ./infra/deploy.sh                   # Gemini API key from .env (or $GEMINI_API_KEY) → Secret Manager
+# PROJECT defaults to the gcloud project you selected (gcloud config set project <ID>).
 #
 # Needs: gcloud CLI, logged in (gcloud auth login), billing enabled on the project.
 set -euo pipefail
 export CLOUDSDK_CORE_DISABLE_PROMPTS=1  # never stop on a yes/no prompt
 
-PROJECT=${PROJECT:?Set PROJECT to your Google Cloud project id}
+PROJECT=${PROJECT:-$(gcloud config get-value project 2>/dev/null || true)}
+if [[ -z "$PROJECT" || "$PROJECT" == "(unset)" ]]; then
+  echo "No Google Cloud project selected. Your projects:"
+  gcloud projects list --format="table(projectId,name)" || true
+  echo
+  echo "Pick one:      gcloud config set project <PROJECT_ID>"
+  echo "Or create one: gcloud projects create yorisoi-\$RANDOM --name=Yorisoi   (then set it as above)"
+  echo "Then re-run:   ./infra/deploy.sh"
+  exit 1
+fi
 REGION=${REGION:-asia-northeast1}
 SERVICE=${SERVICE:-yorisoi}
 SECRET=${SECRET:-yorisoi-gemini-key}
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 gcloud config set project "$PROJECT" >/dev/null
+BILLING=$(gcloud billing projects describe "$PROJECT" --format='value(billingEnabled)' 2>/dev/null || echo unknown)
+if [[ "$BILLING" == "False" ]]; then
+  echo "Billing is not enabled on $PROJECT. Cloud Run, Cloud Build and Vertex AI need it."
+  echo "Link a billing account:  gcloud billing accounts list"
+  echo "                         gcloud billing projects link $PROJECT --billing-account=<ACCOUNT_ID>"
+  echo "No billing account yet?  Create one at https://console.cloud.google.com/billing"
+  exit 1
+fi
 echo "Enabling APIs..."
 gcloud services enable run.googleapis.com cloudbuild.googleapis.com artifactregistry.googleapis.com \
   firestore.googleapis.com secretmanager.googleapis.com aiplatform.googleapis.com >/dev/null
